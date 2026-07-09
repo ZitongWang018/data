@@ -23,6 +23,7 @@ For Qwen3.5-4B on ALFWorld, the paper reports:
 | --- | ---: | ---: | --- |
 | ReAct | 5 | 0.0 | Directionally consistent with the low 1.9 paper baseline; trajectories show repeated loops. |
 | Loop suppression v1 | 5 | 0.0 | Single-action suppression does not break multi-action loops. |
+| Action n-gram gating | 5 | 0.0 | Breaks some repeated action templates and explores more broadly, but still does not solve tasks. |
 
 ## Observation
 
@@ -30,9 +31,10 @@ The failed ReAct trajectories repeatedly enter short action templates, e.g. movi
 
 ## Next Idea
 
-Try action n-gram novelty gating:
+Tried action n-gram novelty gating:
 
 - Track recent 2-gram and 3-gram action patterns.
 - If choosing an action would complete a previously repeated action n-gram, down-rank or temporarily mask that action in the prompt.
 - Keep the intervention local and reversible so it does not block necessary repeated actions such as opening a fridge after revisiting it.
 
+The first result did not improve success on 5 examples. It did change behavior: instead of repeating one short template until the step limit, the model explores more alternatives. The failure suggests that action-space gating alone is not enough for Qwen3.5-4B because the model often loses the task object or goal after the loop is broken. The next reproduction step should therefore implement the paper's weight-update path, starting with Self-signal aTTT, because it may preserve goal-relevant trajectory information rather than only changing the admissible action list.
