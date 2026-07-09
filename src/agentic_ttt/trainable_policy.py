@@ -1,0 +1,140 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Sequence
+
+import torch
+from peft import LoraConfig, get_peft_model
+from torch.nn import functional as F
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+from .llm_policy import GenerationResult, build_react_prompt, parse_action
+from .repetition import compute_adaptive_token_weights, compute_token_weights
+
+
+@dataclass
+class ATrainConfig:
+    lora_rank: int = 8
+    lora_alpha: int = 16
+    learning_rate: float = 5e-4
+    gradient_steps: int = 2
+    ngram_size: int = 3
+    min_weight: float = 0.05
+    adaptive: bool = False
+    update_history: list[str] = field(default_factory=list)
+
+
+class TrainableCausalPolicy:
+    def __init__(
+        self,
+        model_path: str,
+        *,
+        max_new_tokens: int = 32,
+        history_window: int = 3,
+        train_config: ATrainConfig | None = None,
+    ) -> None:
+        self.model_path = model_path
+        self.max_new_tokens = max_new_tokens
+        self.history_window = history_window
+        self.train_config = train_config or ATrainConfig()
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            model_path,
+            trust_remote_code=True,
+            local_files_only=True,
+        )
+        base_model = AutoModelForCausalLM.from_pretrained(
+            model_path,
+            torch_dtype=torch.bfloat16,
+            device_map="auto",
+            trust_remote_code=True,
+            local_files_only=True,
+        )
+        lora_config = LoraConfig(
+            r=self.train_config.lora_rank,
+            lora_alpha=self.train_config.lora_alpha,
+            target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+            lora_dropout=0.0,
+            bias="none",
+            task_type="CAUSAL_LM",
+        )
+        self.model = get_peft_model(base_model, lora_config)
+        self.model.train()
+        self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.train_config.learning_rate)
+
+    def generate_action(
+        self,
+        *,
+        task: str,
+        observation: str,
+        history: Sequence[tuple[str, str]],
+        admissible_actions: Sequence[str],
+    ) -> GenerationResult:
+        self.model.eval()
+        prompt = build_react_prompt(
+            task=task,
+            observation=observation,
+            history=history,
+            history_window=self.history_window,
+            admissible_actions=admissible_actions,
+        )
+        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
+        with torch.no_grad():
+            output = self.model.generate(
+                **inputs,
+                max_new_tokens=self.max_new_tokens,
+                do_sample=False,
+                pad_token_id=self.tokenizer.eos_token_id,
+            )
+        generated = self.tokenizer.decode(output[0][inputs["input_ids"].shape[1] :], skip_special_tokens=True)
+        return GenerationResult(text=generated, action=parse_action(generated, admissible_actions))
+
+    def update_on_text(self, text: str) -> float:
+        text = text.strip()
+        if not text:
+            return 0.0
+
+        weighting = (
+            compute_adaptive_token_weights(
+                text,
+                self.train_config.update_history,
+                ngram_size=self.train_config.ngram_size,
+                min_weight=self.train_config.min_weight,
+            )
+            if self.train_config.adaptive
+            else compute_token_weights(
+                text,
+                self.train_config.update_history,
+                ngram_size=self.train_config.ngram_size,
+                min_weight=self.train_config.min_weight,
+            )
+        )
+        inputs = self.tokenizer(text, return_tensors="pt", truncation=True, max_length=512).to(self.model.device)
+        input_ids = inputs["input_ids"]
+        if input_ids.shape[1] < 2:
+            return 0.0
+
+        word_weights = torch.tensor(weighting.weights or [1.0], dtype=torch.float32, device=self.model.device)
+        if word_weights.numel() != input_ids.shape[1]:
+            word_weights = torch.ones(input_ids.shape[1], dtype=torch.float32, device=self.model.device)
+
+        final_loss = 0.0
+        self.model.train()
+        for _ in range(self.train_config.gradient_steps):
+            self.optimizer.zero_grad(set_to_none=True)
+            outputs = self.model(**inputs)
+            logits = outputs.logits[:, :-1, :].contiguous()
+            labels = input_ids[:, 1:].contiguous()
+            token_weights = word_weights[1:].to(dtype=logits.dtype)
+            loss_per_token = F.cross_entropy(
+                logits.view(-1, logits.size(-1)),
+                labels.view(-1),
+                reduction="none",
+            ).view_as(labels)
+            loss = (loss_per_token * token_weights.unsqueeze(0)).mean()
+            loss.backward()
+            self.optimizer.step()
+            final_loss = float(loss.detach().cpu())
+
+        self.train_config.update_history.append(text)
+        return final_loss
+
