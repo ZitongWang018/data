@@ -13,6 +13,7 @@ def main() -> None:
     parser.add_argument("--model-path", default="/root/autodl-tmp/modelscope_cache/models/Qwen--Qwen3.5-4B/snapshots/master")
     parser.add_argument("--episodes", type=int, default=1)
     parser.add_argument("--max-steps", type=int, default=50)
+    parser.add_argument("--max-new-tokens", type=int, default=24)
     parser.add_argument("--output", default="/root/autodl-tmp/logs/react_alfworld_result.json")
     args = parser.parse_args()
 
@@ -22,7 +23,7 @@ def main() -> None:
 
     config = build_alfworld_config(num_eval_games=args.episodes, max_steps=args.max_steps)
     env = make_alfworld_env(config, batch_size=1)
-    policy = LocalCausalPolicy(args.model_path)
+    policy = LocalCausalPolicy(args.model_path, max_new_tokens=args.max_new_tokens)
     results = []
 
     for episode_id in range(args.episodes):
@@ -43,6 +44,7 @@ def main() -> None:
                 history=history,
                 admissible_actions=admissible,
             )
+            print(f"episode={episode_id} step={steps} action={gen.action}", flush=True)
             next_obs_batch, _scores, dones, infos = env.step([gen.action])
             next_obs = next_obs_batch[0]
             done = bool(dones[0])
@@ -53,7 +55,7 @@ def main() -> None:
             steps += 1
 
         results.append({"episode": episode_id, "won": won, "steps": steps, "trajectory": trajectory})
-        print(f"episode={episode_id} won={won} steps={steps}")
+        print(f"episode={episode_id} won={won} steps={steps}", flush=True)
 
     env.close()
     summary = {
@@ -64,9 +66,8 @@ def main() -> None:
     }
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(summary, indent=2), encoding="utf-8")
-    print(json.dumps({"success_rate": summary["success_rate"], "episodes": args.episodes}, indent=2))
+    print(json.dumps({"success_rate": summary["success_rate"], "episodes": args.episodes}, indent=2), flush=True)
 
 
 if __name__ == "__main__":
     main()
-

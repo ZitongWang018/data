@@ -22,9 +22,10 @@ class GenerationResult:
 
 
 class LocalCausalPolicy:
-    def __init__(self, model_path: str, *, max_new_tokens: int = 64) -> None:
+    def __init__(self, model_path: str, *, max_new_tokens: int = 24, history_window: int = 3) -> None:
         self.model_path = model_path
         self.max_new_tokens = max_new_tokens
+        self.history_window = history_window
         self.tokenizer = AutoTokenizer.from_pretrained(
             model_path,
             trust_remote_code=True,
@@ -51,6 +52,7 @@ class LocalCausalPolicy:
             task=task,
             observation=observation,
             history=history,
+            history_window=self.history_window,
             admissible_actions=admissible_actions,
         )
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
@@ -70,10 +72,11 @@ def build_react_prompt(
     task: str,
     observation: str,
     history: Sequence[tuple[str, str]],
+    history_window: int = 3,
     admissible_actions: Sequence[str],
 ) -> str:
     history_text = "\n".join(
-        f"Observation: {obs}\nAction: {action}" for obs, action in history[-6:]
+        f"Observation: {obs}\nAction: {action}" for obs, action in history[-history_window:]
     )
     actions = "\n".join(f"- {action}" for action in admissible_actions)
     return (
@@ -105,4 +108,3 @@ def parse_action(text: str, admissible_actions: Sequence[str]) -> str:
     if "look" in admissible_actions:
         return "look"
     return admissible_actions[0]
-
