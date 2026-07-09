@@ -25,3 +25,20 @@ This repository contains a minimal reproduction scaffold for:
 - Data cache: `/root/autodl-tmp/data_cache`
 - Logs: `/root/autodl-tmp/logs`
 
+## Default Reproduction Target
+
+The first server run targets the smallest paper model:
+
+- Model: `Qwen3.5-4B`
+- Baseline: no-TTT / ReAct
+- Method: aTTT
+- Cadence: `K=5`
+- LoRA: rank `8`, alpha `16`
+- Learning rate: `5e-4`
+- Repetition weighting: 3-gram, `w_min=0.05`
+
+Before downloading models or datasets on the server, run:
+
+```bash
+source /root/autodl-tmp/agentic_ttt_repro/scripts/env_autodl.sh
+```

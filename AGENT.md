@@ -22,7 +22,7 @@
 
 - baseline: ReAct / no-TTT
 - method: aTTT
-- 默认模型配置: 论文中的 `Qwen3.5-9B`
+- 默认模型配置: 先使用论文中的最小模型 `Qwen3.5-4B`
 - smoke test: 小样本或玩具 episode，验证 repetition weighting 逻辑和运行链路
 
 后续再扩展到：
@@ -30,4 +30,3 @@
 - ALFWorld
 - SWE-bench Lite
 - 论文其余 baselines 和 ablations
-
