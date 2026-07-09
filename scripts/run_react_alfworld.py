@@ -14,6 +14,7 @@ def main() -> None:
     parser.add_argument("--episodes", type=int, default=1)
     parser.add_argument("--max-steps", type=int, default=50)
     parser.add_argument("--max-new-tokens", type=int, default=32)
+    parser.add_argument("--loop-suppress", action="store_true")
     parser.add_argument("--output", default="/root/autodl-tmp/logs/react_alfworld_result.json")
     args = parser.parse_args()
 
@@ -38,12 +39,15 @@ def main() -> None:
 
         while not done and steps < args.max_steps:
             admissible = infos["admissible_commands"][0]
+            prompt_admissible = suppress_loop_actions(history, admissible) if args.loop_suppress else admissible
             gen = policy.generate_action(
                 task=task,
                 observation=obs,
                 history=history,
-                admissible_actions=admissible,
+                admissible_actions=prompt_admissible,
             )
+            if gen.action not in admissible:
+                gen.action = "look" if "look" in admissible else admissible[0]
             print(f"episode={episode_id} step={steps} action={gen.action}", flush=True)
             next_obs_batch, _scores, dones, infos = env.step([gen.action])
             next_obs = next_obs_batch[0]
@@ -67,6 +71,19 @@ def main() -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(json.dumps({"success_rate": summary["success_rate"], "episodes": args.episodes}, indent=2), flush=True)
+
+
+def suppress_loop_actions(
+    history: list[tuple[str, str]],
+    admissible: list[str],
+    *,
+    window: int = 6,
+    threshold: int = 3,
+) -> list[str]:
+    recent = [action for _obs, action in history[-window:]]
+    banned = {action for action in set(recent) if recent.count(action) >= threshold}
+    filtered = [action for action in admissible if action not in banned]
+    return filtered if filtered else admissible
 
 
 if __name__ == "__main__":
