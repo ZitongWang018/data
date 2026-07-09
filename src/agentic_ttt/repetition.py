@@ -75,3 +75,22 @@ def compute_token_weights(
         weights.append(weight)
 
     return TokenWeighting(weights=weights, repeated_positions=sorted(repeated_positions))
+
+
+def compute_adaptive_token_weights(
+    current_text: str,
+    history_texts: Iterable[str],
+    *,
+    ngram_size: int = 3,
+    min_weight: float = 0.05,
+    high_repetition_min_weight: float = 0.01,
+    high_repetition_threshold: float = 0.8,
+) -> TokenWeighting:
+    repetition = max_jaccard_repetition(current_text, history_texts)
+    floor = high_repetition_min_weight if repetition >= high_repetition_threshold else min_weight
+    return compute_token_weights(
+        current_text,
+        history_texts,
+        ngram_size=ngram_size,
+        min_weight=floor,
+    )
