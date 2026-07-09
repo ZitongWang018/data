@@ -8,6 +8,7 @@ export HF_HOME=/root/autodl-tmp/hf_cache
 export HUGGINGFACE_HUB_CACHE=/root/autodl-tmp/hf_cache/hub
 export TRANSFORMERS_CACHE=/root/autodl-tmp/hf_cache/transformers
 export HF_DATASETS_CACHE=/root/autodl-tmp/data_cache/hf_datasets
+export HF_HUB_DISABLE_XET=1
 export TORCH_HOME=/root/autodl-tmp/torch_cache
 export XDG_CACHE_HOME=/root/autodl-tmp/xdg_cache
 
@@ -29,4 +30,3 @@ mkdir -p \
 if [ -f /etc/network_turbo ]; then
   source /etc/network_turbo
 fi
-
