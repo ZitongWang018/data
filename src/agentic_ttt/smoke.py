@@ -21,6 +21,7 @@ def run_smoke_episode() -> list[EpisodeUpdate]:
     texts = [
         "look around kitchen and open cabinet",
         "look around kitchen and open cabinet",
+        "look around kitchen and open cabinet",
         "take apple from cabinet and examine apple",
         "take apple from cabinet and examine apple",
     ]
