@@ -15,6 +15,7 @@ def main() -> None:
     parser.add_argument("--max-steps", type=int, default=50)
     parser.add_argument("--max-new-tokens", type=int, default=32)
     parser.add_argument("--loop-suppress", action="store_true")
+    parser.add_argument("--ngram-gate", action="store_true")
     parser.add_argument("--output", default="/root/autodl-tmp/logs/react_alfworld_result.json")
     args = parser.parse_args()
 
@@ -39,7 +40,11 @@ def main() -> None:
 
         while not done and steps < args.max_steps:
             admissible = infos["admissible_commands"][0]
-            prompt_admissible = suppress_loop_actions(history, admissible) if args.loop_suppress else admissible
+            prompt_admissible = admissible
+            if args.loop_suppress:
+                prompt_admissible = suppress_loop_actions(history, prompt_admissible)
+            if args.ngram_gate:
+                prompt_admissible = suppress_repeated_action_ngrams(history, prompt_admissible)
             gen = policy.generate_action(
                 task=task,
                 observation=obs,
@@ -82,6 +87,35 @@ def suppress_loop_actions(
 ) -> list[str]:
     recent = [action for _obs, action in history[-window:]]
     banned = {action for action in set(recent) if recent.count(action) >= threshold}
+    filtered = [action for action in admissible if action not in banned]
+    return filtered if filtered else admissible
+
+
+def suppress_repeated_action_ngrams(
+    history: list[tuple[str, str]],
+    admissible: list[str],
+    *,
+    ngram_sizes: tuple[int, ...] = (2, 3),
+    min_count: int = 2,
+) -> list[str]:
+    actions = [action for _obs, action in history]
+    if len(actions) < min(ngram_sizes):
+        return admissible
+
+    banned: set[str] = set()
+    for ngram_size in ngram_sizes:
+        if len(actions) < ngram_size - 1:
+            continue
+        prefix = tuple(actions[-(ngram_size - 1) :])
+        counts: dict[tuple[str, ...], int] = {}
+        for start in range(0, len(actions) - ngram_size + 1):
+            gram = tuple(actions[start : start + ngram_size])
+            counts[gram] = counts.get(gram, 0) + 1
+        for action in admissible:
+            candidate = prefix + (action,)
+            if counts.get(candidate, 0) >= min_count:
+                banned.add(action)
+
     filtered = [action for action in admissible if action not in banned]
     return filtered if filtered else admissible
 
