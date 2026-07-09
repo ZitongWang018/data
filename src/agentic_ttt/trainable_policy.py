@@ -9,7 +9,7 @@ from torch.nn import functional as F
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from .llm_policy import GenerationResult, build_react_prompt, parse_action
-from .repetition import compute_adaptive_token_weights, compute_token_weights
+from .repetition import compute_sequence_weights
 
 
 @dataclass
@@ -22,6 +22,7 @@ class ATrainConfig:
     min_weight: float = 0.05
     adaptive: bool = False
     update_history: list[str] = field(default_factory=list)
+    update_token_history: list[int] = field(default_factory=list)
 
 
 class TrainableCausalPolicy:
@@ -93,29 +94,20 @@ class TrainableCausalPolicy:
         if not text:
             return 0.0
 
-        weighting = (
-            compute_adaptive_token_weights(
-                text,
-                self.train_config.update_history,
-                ngram_size=self.train_config.ngram_size,
-                min_weight=self.train_config.min_weight,
-            )
-            if self.train_config.adaptive
-            else compute_token_weights(
-                text,
-                self.train_config.update_history,
-                ngram_size=self.train_config.ngram_size,
-                min_weight=self.train_config.min_weight,
-            )
-        )
         inputs = self.tokenizer(text, return_tensors="pt", truncation=True, max_length=512).to(self.model.device)
         input_ids = inputs["input_ids"]
         if input_ids.shape[1] < 2:
             return 0.0
 
-        word_weights = torch.tensor(weighting.weights or [1.0], dtype=torch.float32, device=self.model.device)
-        if word_weights.numel() != input_ids.shape[1]:
-            word_weights = torch.ones(input_ids.shape[1], dtype=torch.float32, device=self.model.device)
+        current_tokens = input_ids[0].detach().cpu().tolist()
+        weighting = compute_sequence_weights(
+            current_tokens,
+            self.train_config.update_token_history,
+            ngram_size=self.train_config.ngram_size,
+            min_weight=self.train_config.min_weight,
+            adaptive=self.train_config.adaptive,
+        )
+        token_weights = torch.tensor(weighting.weights, dtype=torch.float32, device=self.model.device)
 
         final_loss = 0.0
         self.model.train()
@@ -124,17 +116,17 @@ class TrainableCausalPolicy:
             outputs = self.model(**inputs)
             logits = outputs.logits[:, :-1, :].contiguous()
             labels = input_ids[:, 1:].contiguous()
-            token_weights = word_weights[1:].to(dtype=logits.dtype)
             loss_per_token = F.cross_entropy(
                 logits.view(-1, logits.size(-1)),
                 labels.view(-1),
                 reduction="none",
             ).view_as(labels)
-            loss = (loss_per_token * token_weights.unsqueeze(0)).mean()
+            shifted_weights = token_weights[1:].to(dtype=logits.dtype)
+            loss = (loss_per_token * shifted_weights.unsqueeze(0)).mean()
             loss.backward()
             self.optimizer.step()
             final_loss = float(loss.detach().cpu())
 
         self.train_config.update_history.append(text)
+        self.train_config.update_token_history.extend(current_tokens)
         return final_loss
-

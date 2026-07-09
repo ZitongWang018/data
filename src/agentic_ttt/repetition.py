@@ -2,19 +2,56 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
-from typing import Iterable, Sequence
+from typing import Hashable, Iterable, Sequence
 
 
 def tokenize_words(text: str) -> list[str]:
     return [token for token in text.strip().split() if token]
 
 
-def ngrams(tokens: Sequence[str], n: int) -> list[tuple[str, ...]]:
+def ngrams(tokens: Sequence[Hashable], n: int) -> list[tuple[Hashable, ...]]:
     if n <= 0:
         raise ValueError("n must be positive")
     if len(tokens) < n:
         return []
     return [tuple(tokens[i : i + n]) for i in range(len(tokens) - n + 1)]
+
+
+def compute_sequence_weights(
+    current_tokens: Sequence[int],
+    history_tokens: Iterable[int],
+    *,
+    ngram_size: int = 3,
+    min_weight: float = 0.05,
+    adaptive: bool = False,
+) -> TokenWeighting:
+    """Compute aTTT weights on tokenizer IDs so weighting aligns with LM loss tokens."""
+    tokens = list(current_tokens)
+    if not tokens:
+        return TokenWeighting([], [])
+
+    history = list(history_tokens)
+    history_counter = Counter(ngrams(history, ngram_size))
+
+    repeated_positions: set[int] = set()
+    exposures = [0 for _ in tokens]
+    for start, gram in enumerate(ngrams(tokens, ngram_size)):
+        exposure = history_counter[gram]
+        if exposure > 0:
+            for pos in range(start, start + ngram_size):
+                repeated_positions.add(pos)
+                exposures[pos] = max(exposures[pos], exposure)
+
+    weights: list[float] = []
+    for pos in range(len(tokens)):
+        if pos in repeated_positions:
+            exponent = 2.0 if adaptive else 1.0
+            weight = max(min_weight, 1.0 / ((1.0 + exposures[pos]) ** exponent))
+        else:
+            weight = 1.0
+        weights.append(weight)
+
+    return TokenWeighting(weights=weights, repeated_positions=sorted(repeated_positions))
 
 
 def max_jaccard_repetition(current_text: str, history_texts: Iterable[str]) -> float:
