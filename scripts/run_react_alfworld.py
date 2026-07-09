@@ -12,6 +12,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-path", default="/root/autodl-tmp/modelscope_cache/models/Qwen--Qwen3.5-4B/snapshots/master")
     parser.add_argument("--episodes", type=int, default=1)
+    parser.add_argument("--start-index", type=int, default=0)
     parser.add_argument("--max-steps", type=int, default=50)
     parser.add_argument("--max-new-tokens", type=int, default=32)
     parser.add_argument("--loop-suppress", action="store_true")
@@ -23,8 +24,8 @@ def main() -> None:
     if not str(output).startswith("/root/autodl-tmp"):
         raise RuntimeError(f"Refusing to write outside /root/autodl-tmp: {output}")
 
-    config = build_alfworld_config(num_eval_games=args.episodes, max_steps=args.max_steps)
-    env = make_alfworld_env(config, batch_size=1)
+    config = build_alfworld_config(num_eval_games=args.start_index + args.episodes, max_steps=args.max_steps)
+    env = make_alfworld_env(config, batch_size=1, start_index=args.start_index, num_games=args.episodes)
     policy = LocalCausalPolicy(args.model_path, max_new_tokens=args.max_new_tokens)
     results = []
 
@@ -67,15 +68,21 @@ def main() -> None:
         print(f"episode={episode_id} won={won} steps={steps}", flush=True)
 
     env.close()
+    method = "react"
+    if args.loop_suppress:
+        method += "_loop_suppress"
+    if args.ngram_gate:
+        method += "_ngram_gate"
     summary = {
-        "method": "react",
+        "method": method,
         "episodes": args.episodes,
+        "start_index": args.start_index,
         "success_rate": sum(1 for row in results if row["won"]) / max(1, len(results)) * 100.0,
         "results": results,
     }
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(summary, indent=2), encoding="utf-8")
-    print(json.dumps({"success_rate": summary["success_rate"], "episodes": args.episodes}, indent=2), flush=True)
+    print(json.dumps({"method": method, "success_rate": summary["success_rate"], "episodes": args.episodes}, indent=2), flush=True)
 
 
 def suppress_loop_actions(

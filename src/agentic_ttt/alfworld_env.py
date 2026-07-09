@@ -51,10 +51,16 @@ def build_alfworld_config(
     }
 
 
-def make_alfworld_env(config: dict[str, Any], *, batch_size: int = 1):
+def make_alfworld_env(config: dict[str, Any], *, batch_size: int = 1, start_index: int = 0, num_games: int | None = None):
     from alfworld.agents.environment import get_environment
 
+    if start_index < 0:
+        raise ValueError("start_index must be non-negative")
     env_cls = get_environment(config["env"]["type"])
     env = env_cls(config, train_eval=config.get("split", "eval_out_of_distribution"))
+    if start_index or num_games is not None:
+        end_index = None if num_games is None else start_index + num_games
+        env.game_files = env.game_files[start_index:end_index]
+        if not env.game_files:
+            raise ValueError(f"No ALFWorld games selected for start_index={start_index}, num_games={num_games}")
     return env.init_env(batch_size=batch_size)
-
