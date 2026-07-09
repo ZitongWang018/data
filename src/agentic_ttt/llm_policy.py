@@ -10,7 +10,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 PROMPT_HEADER = """You are playing ALFWorld, a text household environment.
 Choose exactly one valid action from the provided admissible actions.
-Respond with a short thought and then one line formatted as:
+Respond with only one line formatted as:
 Action: <valid action>
 """
 
@@ -22,7 +22,7 @@ class GenerationResult:
 
 
 class LocalCausalPolicy:
-    def __init__(self, model_path: str, *, max_new_tokens: int = 24, history_window: int = 3) -> None:
+    def __init__(self, model_path: str, *, max_new_tokens: int = 32, history_window: int = 3) -> None:
         self.model_path = model_path
         self.max_new_tokens = max_new_tokens
         self.history_window = history_window
@@ -85,7 +85,7 @@ def build_react_prompt(
         f"{history_text}\n\n"
         f"Current observation: {observation}\n\n"
         f"Admissible actions:\n{actions}\n\n"
-        "Thought:"
+        "Action:"
     )
 
 

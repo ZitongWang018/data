@@ -13,7 +13,7 @@ def main() -> None:
     parser.add_argument("--model-path", default="/root/autodl-tmp/modelscope_cache/models/Qwen--Qwen3.5-4B/snapshots/master")
     parser.add_argument("--episodes", type=int, default=1)
     parser.add_argument("--max-steps", type=int, default=50)
-    parser.add_argument("--max-new-tokens", type=int, default=24)
+    parser.add_argument("--max-new-tokens", type=int, default=32)
     parser.add_argument("--output", default="/root/autodl-tmp/logs/react_alfworld_result.json")
     args = parser.parse_args()
 
