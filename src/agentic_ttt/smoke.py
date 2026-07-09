@@ -33,7 +33,6 @@ def run_smoke_episode() -> list[EpisodeUpdate]:
             history,
             ngram_size=3,
             min_weight=0.05,
-            high_repetition_min_weight=0.01,
             high_repetition_threshold=0.8,
         )
         updates.append(
