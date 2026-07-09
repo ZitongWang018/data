@@ -1,0 +1,30 @@
+{
+  "model": "Qwen/Qwen3.5-4B",
+  "benchmark": "ALFWorld",
+  "episodes": 140,
+  "seeds": [0, 1, 2],
+  "step_budget": 50,
+  "defaults": {
+    "cadence": 5,
+    "lora_rank": 8,
+    "lora_alpha": 16,
+    "learning_rate": 0.0005,
+    "gradient_steps_per_update": 2,
+    "sequence_filter_threshold": 0.5,
+    "ngram_size": 3,
+    "min_token_weight": 0.05
+  },
+  "paper_targets": {
+    "react": 1.9,
+    "qttt": 2.6,
+    "self_no_filter": 2.1,
+    "self_sequence_filter": 3.1,
+    "self_attt": 3.6,
+    "env_no_filter": 4.3,
+    "env_sequence_filter": 5.5,
+    "env_attt": 4.5,
+    "summary_no_filter": 4.5,
+    "summary_sequence_filter": 4.3,
+    "summary_attt": 4.8
+  }
+}

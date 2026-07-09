@@ -4,6 +4,9 @@ accelerate
 peft
 datasets
 evaluate
+huggingface_hub
 numpy
 tqdm
-
+alfworld
+sentencepiece
+protobuf
