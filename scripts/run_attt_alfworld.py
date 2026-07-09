@@ -18,6 +18,7 @@ def main() -> None:
     parser.add_argument("--adaptive", action="store_true")
     parser.add_argument("--ngram-gate", action="store_true")
     parser.add_argument("--skip-loop-updates", action="store_true")
+    parser.add_argument("--update-action-only", action="store_true")
     parser.add_argument("--output", default="/root/autodl-tmp/logs/self_attt_alfworld_result.json")
     args = parser.parse_args()
 
@@ -58,7 +59,9 @@ def main() -> None:
             next_obs = next_obs_batch[0]
             done = bool(dones[0])
             won = bool(infos["won"][0])
-            update_text = f"Observation: {obs}\nAction: {gen.action}\nModel text: {gen.text}"
+            update_text = f"Observation: {obs}\nAction: {gen.action}"
+            if not args.update_action_only:
+                update_text += f"\nModel text: {gen.text}"
             if (steps + 1) % args.cadence == 0:
                 if args.skip_loop_updates and is_recent_loop(history + [(obs, gen.action)]):
                     updates.append({"step": steps + 1, "loss": 0.0, "skipped": "loop", "text": update_text[:300]})
@@ -82,6 +85,8 @@ def main() -> None:
         method += "_ngram_gate"
     if args.skip_loop_updates:
         method += "_skip_loop_updates"
+    if args.update_action_only:
+        method += "_action_only"
     summary = {
         "method": method,
         "episodes": args.episodes,
