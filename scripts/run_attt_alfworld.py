@@ -15,7 +15,9 @@ def main() -> None:
     parser.add_argument("--start-index", type=int, default=0)
     parser.add_argument("--max-steps", type=int, default=50)
     parser.add_argument("--cadence", type=int, default=5)
+    parser.add_argument("--signal", choices=["self", "env"], default="self")
     parser.add_argument("--adaptive", action="store_true")
+    parser.add_argument("--no-token-reweight", action="store_true")
     parser.add_argument("--ngram-gate", action="store_true")
     parser.add_argument("--skip-loop-updates", action="store_true")
     parser.add_argument("--update-action-only", action="store_true")
@@ -31,7 +33,11 @@ def main() -> None:
     results = []
 
     for episode_id in range(args.episodes):
-        policy = TrainableCausalPolicy(args.model_path, train_config=ATrainConfig(adaptive=args.adaptive))
+        train_config = ATrainConfig(
+            adaptive=args.adaptive,
+            use_token_reweighting=not args.no_token_reweight,
+        )
+        policy = TrainableCausalPolicy(args.model_path, train_config=train_config)
         obs_batch, infos = env.reset()
         obs = obs_batch[0]
         task = obs.split("\n\n")[-1].strip()
@@ -59,9 +65,14 @@ def main() -> None:
             next_obs = next_obs_batch[0]
             done = bool(dones[0])
             won = bool(infos["won"][0])
-            update_text = f"Observation: {obs}\nAction: {gen.action}"
-            if not args.update_action_only:
-                update_text += f"\nModel text: {gen.text}"
+            update_text = build_update_text(
+                signal=args.signal,
+                obs=obs,
+                next_obs=next_obs,
+                action=gen.action,
+                model_text=gen.text,
+                update_action_only=args.update_action_only,
+            )
             if (steps + 1) % args.cadence == 0:
                 if args.skip_loop_updates and is_recent_loop(history + [(obs, gen.action)]):
                     updates.append({"step": steps + 1, "loss": 0.0, "skipped": "loop", "text": update_text[:300]})
@@ -80,7 +91,10 @@ def main() -> None:
         print(f"episode={episode_id} won={won} steps={steps}", flush=True)
 
     env.close()
-    method = "self_adaptive_attt" if args.adaptive else "self_attt"
+    if args.no_token_reweight:
+        method = f"{args.signal}_no_filter"
+    else:
+        method = f"{args.signal}_adaptive_attt" if args.adaptive else f"{args.signal}_attt"
     if args.ngram_gate:
         method += "_ngram_gate"
     if args.skip_loop_updates:
@@ -89,6 +103,8 @@ def main() -> None:
         method += "_action_only"
     summary = {
         "method": method,
+        "signal": args.signal,
+        "token_reweighting": not args.no_token_reweight,
         "episodes": args.episodes,
         "start_index": args.start_index,
         "success_rate": sum(1 for row in results if row["won"]) / max(1, len(results)) * 100.0,
@@ -97,6 +113,23 @@ def main() -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(json.dumps({"method": method, "success_rate": summary["success_rate"], "episodes": args.episodes}, indent=2), flush=True)
+
+
+def build_update_text(
+    *,
+    signal: str,
+    obs: str,
+    next_obs: str,
+    action: str,
+    model_text: str,
+    update_action_only: bool,
+) -> str:
+    if signal == "env":
+        return f"Observation: {next_obs}"
+    update_text = f"Action: {action}"
+    if not update_action_only:
+        update_text += f"\nModel text: {model_text}"
+    return update_text
 
 
 def suppress_repeated_action_ngrams(

@@ -21,6 +21,7 @@ class ATrainConfig:
     ngram_size: int = 3
     min_weight: float = 0.05
     adaptive: bool = False
+    use_token_reweighting: bool = True
     update_history: list[str] = field(default_factory=list)
     update_token_history: list[int] = field(default_factory=list)
 
@@ -100,14 +101,18 @@ class TrainableCausalPolicy:
             return 0.0
 
         current_tokens = input_ids[0].detach().cpu().tolist()
-        weighting = compute_sequence_weights(
-            current_tokens,
-            self.train_config.update_token_history,
-            ngram_size=self.train_config.ngram_size,
-            min_weight=self.train_config.min_weight,
-            adaptive=self.train_config.adaptive,
-        )
-        token_weights = torch.tensor(weighting.weights, dtype=torch.float32, device=self.model.device)
+        if self.train_config.use_token_reweighting:
+            weighting = compute_sequence_weights(
+                current_tokens,
+                self.train_config.update_token_history,
+                ngram_size=self.train_config.ngram_size,
+                min_weight=self.train_config.min_weight,
+                adaptive=self.train_config.adaptive,
+            )
+            weights = weighting.weights
+        else:
+            weights = [1.0 for _ in current_tokens]
+        token_weights = torch.tensor(weights, dtype=torch.float32, device=self.model.device)
 
         final_loss = 0.0
         self.model.train()
