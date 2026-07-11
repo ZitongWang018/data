@@ -20,9 +20,14 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--max-steps", type=int, default=50)
     parser.add_argument("--max-new-tokens", type=int, default=96)
-    parser.add_argument("--prompt-mode", choices=["react_fewshot", "admissible"], default="react_fewshot")
+    parser.add_argument(
+        "--prompt-mode",
+        choices=["react_fewshot", "react_zero_shot", "admissible"],
+        default="react_fewshot",
+    )
     parser.add_argument("--loop-suppress", action="store_true")
     parser.add_argument("--ngram-gate", action="store_true")
+    parser.add_argument("--chat-template", action="store_true")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--output", default="/root/autodl-tmp/logs/react_alfworld_result.json")
     args = parser.parse_args()
@@ -43,7 +48,13 @@ def main() -> None:
     results = load_completed_results(
         output,
         resume=args.resume,
-        expected={"method": method, "start_index": args.start_index, "seed": args.seed, "prompt_mode": args.prompt_mode},
+        expected={
+            "method": method,
+            "start_index": args.start_index,
+            "seed": args.seed,
+            "prompt_mode": args.prompt_mode,
+            "chat_template": args.chat_template,
+        },
     )
     if len(results) > args.episodes:
         raise ValueError(f"Output already has {len(results)} episodes, more than requested {args.episodes}")
@@ -63,6 +74,7 @@ def main() -> None:
         args.model_path,
         max_new_tokens=args.max_new_tokens,
         prompt_mode=args.prompt_mode,
+        use_chat_template=args.chat_template,
     )
 
     for episode_id in range(len(results), args.episodes):
@@ -133,6 +145,7 @@ def write_summary(*, output: Path, method: str, args: argparse.Namespace, result
     summary = {
         "method": method,
         "prompt_mode": args.prompt_mode,
+        "chat_template": args.chat_template,
         "seed": args.seed,
         "model_path": args.model_path,
         "max_steps": args.max_steps,

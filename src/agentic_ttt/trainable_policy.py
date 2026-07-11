@@ -42,12 +42,14 @@ class TrainableCausalPolicy:
         history_window: int = 3,
         train_config: ATrainConfig | None = None,
         prompt_mode: str = "react_fewshot",
+        use_chat_template: bool = False,
     ) -> None:
         self.model_path = model_path
         self.max_new_tokens = max_new_tokens
         self.history_window = history_window
         self.train_config = train_config or ATrainConfig()
         self.prompt_mode = prompt_mode
+        self.use_chat_template = use_chat_template
         self.tokenizer = AutoTokenizer.from_pretrained(
             model_path,
             trust_remote_code=True,
@@ -114,6 +116,13 @@ class TrainableCausalPolicy:
             gamefile=gamefile,
             fewshot_prompts=self.fewshot_prompts,
         )
+        if self.use_chat_template:
+            prompt = self.tokenizer.apply_chat_template(
+                [{"role": "user", "content": prompt}],
+                tokenize=False,
+                add_generation_prompt=True,
+                enable_thinking=False,
+            )
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
         stopping = newline_stopping_criteria(self.tokenizer, inputs["input_ids"].shape[1])
         with torch.no_grad():
@@ -125,7 +134,7 @@ class TrainableCausalPolicy:
                 stopping_criteria=stopping,
             )
         generated = self.tokenizer.decode(output[0][inputs["input_ids"].shape[1] :], skip_special_tokens=True)
-        if self.prompt_mode == "react_fewshot":
+        if self.prompt_mode in {"react_fewshot", "react_zero_shot"}:
             action = parse_react_line(generated)
         else:
             action = parse_action(generated, admissible_actions)

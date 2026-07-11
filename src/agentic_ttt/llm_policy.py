@@ -31,11 +31,13 @@ class LocalCausalPolicy:
         max_new_tokens: int = 96,
         history_window: int = 3,
         prompt_mode: str = "react_fewshot",
+        use_chat_template: bool = False,
     ) -> None:
         self.model_path = model_path
         self.max_new_tokens = max_new_tokens
         self.history_window = history_window
         self.prompt_mode = prompt_mode
+        self.use_chat_template = use_chat_template
         self.tokenizer = AutoTokenizer.from_pretrained(
             model_path,
             trust_remote_code=True,
@@ -72,6 +74,13 @@ class LocalCausalPolicy:
             gamefile=gamefile,
             fewshot_prompts=self.fewshot_prompts,
         )
+        if self.use_chat_template:
+            prompt = self.tokenizer.apply_chat_template(
+                [{"role": "user", "content": prompt}],
+                tokenize=False,
+                add_generation_prompt=True,
+                enable_thinking=False,
+            )
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
         stopping = newline_stopping_criteria(self.tokenizer, inputs["input_ids"].shape[1])
         with torch.no_grad():
@@ -83,7 +92,7 @@ class LocalCausalPolicy:
                 stopping_criteria=stopping,
             )
         generated = self.tokenizer.decode(output[0][inputs["input_ids"].shape[1] :], skip_special_tokens=True)
-        if self.prompt_mode == "react_fewshot":
+        if self.prompt_mode in {"react_fewshot", "react_zero_shot"}:
             action = parse_react_line(generated)
         else:
             action = parse_action(generated, admissible_actions)
@@ -111,6 +120,14 @@ def build_policy_prompt(
             history=history,
             gamefile=gamefile,
             prompts=fewshot_prompts,
+        )
+    if prompt_mode == "react_zero_shot":
+        if initial_observation is None:
+            raise ValueError("react_zero_shot requires initial_observation")
+        return build_zero_shot_react_prompt(
+            initial_observation=initial_observation,
+            current_observation=observation,
+            history=history,
         )
     if prompt_mode != "admissible":
         raise ValueError(f"Unknown prompt mode: {prompt_mode}")
@@ -167,6 +184,33 @@ def build_paper_react_prompt(
         f"{demonstrations}\nHere is the task.\n"
         f"{clean_initial_observation(initial_observation)}\n>"
     )
+    return append_react_history(prompt, current_observation=current_observation, history=history)
+
+
+def build_zero_shot_react_prompt(
+    *,
+    initial_observation: str,
+    current_observation: str,
+    history: Sequence[tuple[str, str]],
+) -> str:
+    prompt = (
+        "Interact with a household to solve the task. At each turn, output exactly one line.\n"
+        "Use `think: ...` to reason without acting, or output one environment action.\n"
+        "Action forms: go to, open, close, take ... from ..., put ... in/on ..., clean ... with ..., "
+        "heat ... with ..., cool ... with ..., use, look, inventory, examine.\n"
+        "Do not describe an action; output the command itself.\n"
+        "Here is the task.\n"
+        f"{clean_initial_observation(initial_observation)}\n>"
+    )
+    return append_react_history(prompt, current_observation=current_observation, history=history)
+
+
+def append_react_history(
+    prompt: str,
+    *,
+    current_observation: str,
+    history: Sequence[tuple[str, str]],
+) -> str:
     for index, (_obs_before, action) in enumerate(history):
         next_observation = history[index + 1][0] if index + 1 < len(history) else current_observation
         prompt += f" {action}\n{next_observation}\n>"
