@@ -73,3 +73,26 @@ def make_alfworld_env(config: dict[str, Any], *, batch_size: int = 1, start_inde
             raise ValueError(f"No ALFWorld games selected for start_index={start_index}, num_games={num_games}")
     env.num_games = len(env.game_files)
     return env.init_env(batch_size=batch_size)
+
+
+class AlfworldEpisodeFactory:
+    """Create single-game environments with a stable global game index."""
+
+    def __init__(self, config: dict[str, Any]) -> None:
+        from alfworld.agents.environment import get_environment
+
+        runtime_config = deepcopy(config)
+        runtime_config["dataset"]["num_eval_games"] = 0
+        env_cls = get_environment(runtime_config["env"]["type"])
+        self._template = env_cls(
+            runtime_config,
+            train_eval=runtime_config.get("split", "eval_out_of_distribution"),
+        )
+        self.game_files = sorted(self._template.game_files)
+
+    def make_env(self, game_index: int, *, batch_size: int = 1):
+        if game_index < 0 or game_index >= len(self.game_files):
+            raise IndexError(f"ALFWorld game index {game_index} is outside [0, {len(self.game_files)})")
+        self._template.game_files = [self.game_files[game_index]]
+        self._template.num_games = 1
+        return self._template.init_env(batch_size=batch_size)

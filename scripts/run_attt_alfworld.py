@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from agentic_ttt.alfworld_env import build_alfworld_config, make_alfworld_env
+from agentic_ttt.alfworld_env import AlfworldEpisodeFactory, build_alfworld_config
 from agentic_ttt.repetition import max_jaccard_repetition
 from agentic_ttt.results import atomic_write_json, load_completed_results, runtime_metadata
 from agentic_ttt.trainable_policy import ATrainConfig, TrainableCausalPolicy
@@ -65,12 +65,12 @@ def main() -> None:
         return
 
     config = build_alfworld_config(num_eval_games=0, max_steps=args.max_steps)
-    env = make_alfworld_env(
-        config,
-        batch_size=1,
-        start_index=args.start_index + len(results),
-        num_games=remaining,
-    )
+    env_factory = AlfworldEpisodeFactory(config)
+    if args.start_index + args.episodes > len(env_factory.game_files):
+        raise ValueError(
+            f"Requested games through {args.start_index + args.episodes}, "
+            f"but ALFWorld only has {len(env_factory.game_files)}"
+        )
     train_config = ATrainConfig(
         adaptive=args.adaptive,
         use_token_reweighting=not args.no_token_reweight and args.sequence_filter_threshold is None,
@@ -84,6 +84,7 @@ def main() -> None:
 
     for episode_id in range(len(results), args.episodes):
         policy.reset_episode()
+        env = env_factory.make_env(args.start_index + episode_id)
         obs_batch, infos = env.reset()
         obs = obs_batch[0]
         initial_observation = obs
@@ -180,6 +181,7 @@ def main() -> None:
             obs = next_obs
             steps += 1
 
+        env.close()
         results.append(
             {
                 "episode": episode_id,
@@ -200,10 +202,6 @@ def main() -> None:
             results=results,
             complete=len(results) == args.episodes,
         )
-
-    env.close()
-
-
 def run_scheduled_update(
     *,
     policy: TrainableCausalPolicy,
