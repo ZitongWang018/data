@@ -9,7 +9,7 @@ import torch
 
 from agentic_ttt.alfworld_env import build_alfworld_config, make_alfworld_env
 from agentic_ttt.repetition import max_jaccard_repetition
-from agentic_ttt.results import atomic_write_json, load_completed_results
+from agentic_ttt.results import atomic_write_json, load_completed_results, runtime_metadata
 from agentic_ttt.trainable_policy import ATrainConfig, TrainableCausalPolicy
 
 
@@ -286,6 +286,11 @@ def write_summary(*, output: Path, method: str, args: argparse.Namespace, result
         "progress_buffered_env": args.progress_buffered_env,
         "prompt_mode": args.prompt_mode,
         "seed": args.seed,
+        "model_path": args.model_path,
+        "max_steps": args.max_steps,
+        "max_new_tokens": args.max_new_tokens,
+        "cadence": args.cadence,
+        "runtime": runtime_metadata(),
         "episodes": args.episodes,
         "completed_episodes": len(results),
         "complete": complete,

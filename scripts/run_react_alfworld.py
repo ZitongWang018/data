@@ -9,7 +9,7 @@ import torch
 
 from agentic_ttt.alfworld_env import build_alfworld_config, make_alfworld_env
 from agentic_ttt.llm_policy import LocalCausalPolicy
-from agentic_ttt.results import atomic_write_json, load_completed_results
+from agentic_ttt.results import atomic_write_json, load_completed_results, runtime_metadata
 
 
 def main() -> None:
@@ -136,6 +136,10 @@ def write_summary(*, output: Path, method: str, args: argparse.Namespace, result
         "method": method,
         "prompt_mode": args.prompt_mode,
         "seed": args.seed,
+        "model_path": args.model_path,
+        "max_steps": args.max_steps,
+        "max_new_tokens": args.max_new_tokens,
+        "runtime": runtime_metadata(),
         "episodes": args.episodes,
         "completed_episodes": len(results),
         "complete": complete,

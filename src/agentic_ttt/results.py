@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
@@ -28,3 +29,14 @@ def load_completed_results(
     if not isinstance(results, list):
         raise ValueError(f"Invalid results list in {path}")
     return results
+
+
+def runtime_metadata() -> dict[str, str]:
+    packages = ["torch", "transformers", "peft", "alfworld", "flash-linear-attention", "causal-conv1d"]
+    metadata = {}
+    for package in packages:
+        try:
+            metadata[package] = version(package)
+        except PackageNotFoundError:
+            metadata[package] = "not-installed"
+    return metadata
