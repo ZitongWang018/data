@@ -4,6 +4,7 @@ import unittest
 
 from agentic_ttt.llm_policy import build_paper_react_prompt, parse_react_line, task_prompt_prefix
 from agentic_ttt.repetition import compute_sequence_weights
+from scripts.run_attt_alfworld import is_progress_transition
 
 
 class CoreLogicTests(unittest.TestCase):
@@ -32,6 +33,27 @@ class CoreLogicTests(unittest.TestCase):
         weighting = compute_sequence_weights([1, 2, 3, 4], [1, 2, 3, 1, 2, 3], ngram_size=3)
         self.assertEqual(weighting.repeated_positions, [0, 1, 2])
         self.assertEqual(weighting.weights, [1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0, 1.0])
+
+    def test_progress_transition_rejects_thoughts_and_invalid_actions(self) -> None:
+        common = {
+            "admissible": ["go to desk 1", "look"],
+            "previous_observation": "You are in a room.",
+            "next_observation": "On the desk, you see a key.",
+        }
+        self.assertFalse(is_progress_transition(action="think: inspect", is_thought=True, **common))
+        self.assertFalse(is_progress_transition(action="go to desk 2", is_thought=False, **common))
+        self.assertTrue(is_progress_transition(action="go to desk 1", is_thought=False, **common))
+
+    def test_progress_transition_rejects_noop_observations(self) -> None:
+        self.assertFalse(
+            is_progress_transition(
+                action="look",
+                admissible=["look"],
+                previous_observation="room",
+                next_observation="room",
+                is_thought=False,
+            )
+        )
 
 
 if __name__ == "__main__":

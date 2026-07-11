@@ -21,3 +21,5 @@
 - Added per-episode atomic checkpoints, resume support, fixed seeds, and LoRA
   reset without reloading the base model.
 - Corrected update text to use Env observations and Self model text verbatim.
+- Added progress-buffered Env aTTT, which selects the latest valid state-changing
+  observation in each cadence window and skips windows containing only no-ops.

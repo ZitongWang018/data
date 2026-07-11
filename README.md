@@ -9,7 +9,7 @@ Test-Time Training for LLM Agents* on ALFWorld.
 - Online TTT without repetition filtering.
 - Sequence-level update filtering.
 - Agentic TTT with tokenizer-level 3-gram exposure weights.
-- Optional adaptive and loop-control extensions.
+- Progress-buffered Env aTTT plus optional adaptive and loop-control extensions.
 
 The default `react_fewshot` prompt uses the original task-specific two-shot
 ALFWorld demonstrations from the MIT-licensed ReAct repository. It does not
