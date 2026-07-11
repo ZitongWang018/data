@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -56,11 +57,19 @@ def make_alfworld_env(config: dict[str, Any], *, batch_size: int = 1, start_inde
 
     if start_index < 0:
         raise ValueError("start_index must be non-negative")
-    env_cls = get_environment(config["env"]["type"])
-    env = env_cls(config, train_eval=config.get("split", "eval_out_of_distribution"))
+
+    # ALFWorld truncates game_files during construction. Collect all games first so
+    # sorting and start_index select the same episodes on every filesystem.
+    runtime_config = deepcopy(config)
+    if start_index or num_games is not None:
+        runtime_config["dataset"]["num_eval_games"] = 0
+    env_cls = get_environment(runtime_config["env"]["type"])
+    env = env_cls(runtime_config, train_eval=runtime_config.get("split", "eval_out_of_distribution"))
+    env.game_files = sorted(env.game_files)
     if start_index or num_games is not None:
         end_index = None if num_games is None else start_index + num_games
         env.game_files = env.game_files[start_index:end_index]
         if not env.game_files:
             raise ValueError(f"No ALFWorld games selected for start_index={start_index}, num_games={num_games}")
+    env.num_games = len(env.game_files)
     return env.init_env(batch_size=batch_size)

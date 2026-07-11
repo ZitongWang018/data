@@ -2,7 +2,8 @@
   "model": "Qwen/Qwen3.5-4B",
   "local_model_path": "/root/autodl-tmp/modelscope_cache/models/Qwen--Qwen3.5-4B/snapshots/master",
   "benchmark": "ALFWorld",
-  "episodes": 140,
+  "episodes": 134,
+  "paper_reported_episodes": 140,
   "seeds": [0, 1, 2],
   "step_budget": 50,
   "defaults": {

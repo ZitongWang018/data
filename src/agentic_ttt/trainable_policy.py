@@ -8,7 +8,14 @@ from peft import LoraConfig, get_peft_model
 from torch.nn import functional as F
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from .llm_policy import GenerationResult, build_react_prompt, parse_action
+from .llm_policy import (
+    GenerationResult,
+    build_policy_prompt,
+    load_alfworld_prompts,
+    newline_stopping_criteria,
+    parse_action,
+    parse_react_line,
+)
 from .repetition import compute_sequence_weights
 
 
@@ -31,14 +38,16 @@ class TrainableCausalPolicy:
         self,
         model_path: str,
         *,
-        max_new_tokens: int = 32,
+        max_new_tokens: int = 96,
         history_window: int = 3,
         train_config: ATrainConfig | None = None,
+        prompt_mode: str = "react_fewshot",
     ) -> None:
         self.model_path = model_path
         self.max_new_tokens = max_new_tokens
         self.history_window = history_window
         self.train_config = train_config or ATrainConfig()
+        self.prompt_mode = prompt_mode
         self.tokenizer = AutoTokenizer.from_pretrained(
             model_path,
             trust_remote_code=True,
@@ -61,7 +70,27 @@ class TrainableCausalPolicy:
         )
         self.model = get_peft_model(base_model, lora_config)
         self.model.train()
-        self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.train_config.learning_rate)
+        self._initial_adapter_state = {
+            name: parameter.detach().clone()
+            for name, parameter in self.model.named_parameters()
+            if parameter.requires_grad
+        }
+        self.optimizer = self._build_optimizer()
+        self.fewshot_prompts = load_alfworld_prompts() if prompt_mode == "react_fewshot" else None
+
+    def _build_optimizer(self) -> torch.optim.Optimizer:
+        trainable = [parameter for parameter in self.model.parameters() if parameter.requires_grad]
+        return torch.optim.AdamW(trainable, lr=self.train_config.learning_rate)
+
+    def reset_episode(self) -> None:
+        with torch.no_grad():
+            for name, parameter in self.model.named_parameters():
+                if name in self._initial_adapter_state:
+                    parameter.copy_(self._initial_adapter_state[name])
+        self.train_config.update_history.clear()
+        self.train_config.update_token_history.clear()
+        self.optimizer = self._build_optimizer()
+        self.model.train()
 
     def generate_action(
         self,
@@ -70,25 +99,37 @@ class TrainableCausalPolicy:
         observation: str,
         history: Sequence[tuple[str, str]],
         admissible_actions: Sequence[str],
+        initial_observation: str | None = None,
+        gamefile: str | None = None,
     ) -> GenerationResult:
         self.model.eval()
-        prompt = build_react_prompt(
+        prompt = build_policy_prompt(
+            prompt_mode=self.prompt_mode,
             task=task,
             observation=observation,
             history=history,
             history_window=self.history_window,
             admissible_actions=admissible_actions,
+            initial_observation=initial_observation,
+            gamefile=gamefile,
+            fewshot_prompts=self.fewshot_prompts,
         )
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
+        stopping = newline_stopping_criteria(self.tokenizer, inputs["input_ids"].shape[1])
         with torch.no_grad():
             output = self.model.generate(
                 **inputs,
                 max_new_tokens=self.max_new_tokens,
                 do_sample=False,
                 pad_token_id=self.tokenizer.eos_token_id,
+                stopping_criteria=stopping,
             )
         generated = self.tokenizer.decode(output[0][inputs["input_ids"].shape[1] :], skip_special_tokens=True)
-        return GenerationResult(text=generated, action=parse_action(generated, admissible_actions))
+        if self.prompt_mode == "react_fewshot":
+            action = parse_react_line(generated)
+        else:
+            action = parse_action(generated, admissible_actions)
+        return GenerationResult(text=generated, action=action)
 
     def update_on_text(self, text: str) -> float:
         text = text.strip()
