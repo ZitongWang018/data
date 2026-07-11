@@ -12,6 +12,10 @@ export HF_HUB_DISABLE_XET=1
 export MODELSCOPE_CACHE=/root/autodl-tmp/modelscope_cache
 export TORCH_HOME=/root/autodl-tmp/torch_cache
 export XDG_CACHE_HOME=/root/autodl-tmp/xdg_cache
+export PIP_CACHE_DIR=/root/autodl-tmp/pip_cache
+export TRITON_CACHE_DIR=/root/autodl-tmp/triton_cache
+export TORCH_EXTENSIONS_DIR=/root/autodl-tmp/torch_extensions
+export CUDA_CACHE_PATH=/root/autodl-tmp/cuda_cache
 
 export WANDB_DIR=/root/autodl-tmp/logs/wandb
 export WANDB_CACHE_DIR=/root/autodl-tmp/logs/wandb_cache
@@ -25,6 +29,10 @@ mkdir -p \
   "$MODELSCOPE_CACHE" \
   "$TORCH_HOME" \
   "$XDG_CACHE_HOME" \
+  "$PIP_CACHE_DIR" \
+  "$TRITON_CACHE_DIR" \
+  "$TORCH_EXTENSIONS_DIR" \
+  "$CUDA_CACHE_PATH" \
   "$WANDB_DIR" \
   "$WANDB_CACHE_DIR" \
   "$TMPDIR"
