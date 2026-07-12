@@ -29,7 +29,7 @@ def main() -> None:
         default="react_fewshot",
     )
     parser.add_argument("--cadence", type=int, default=5)
-    parser.add_argument("--signal", choices=["self", "env"], default="self")
+    parser.add_argument("--signal", choices=["self", "env"], default="env")
     parser.add_argument("--adaptive", action="store_true")
     parser.add_argument("--no-token-reweight", action="store_true")
     parser.add_argument("--sequence-filter-threshold", type=float)
@@ -134,10 +134,14 @@ def main() -> None:
                 gen.action = "look" if "look" in admissible else admissible[0]
             elif not is_thought and gen.action not in admissible:
                 invalid_actions += 1
-            next_obs_batch, _scores, dones, infos = env.step([gen.action])
-            next_obs = "OK." if is_thought else next_obs_batch[0]
-            done = bool(dones[0])
-            won = bool(infos["won"][0])
+            # ReAct thoughts stay in the prompt only; do not consume an environment transition.
+            if is_thought:
+                next_obs = "OK."
+            else:
+                next_obs_batch, _scores, dones, infos = env.step([gen.action])
+                next_obs = next_obs_batch[0]
+                done = bool(dones[0])
+                won = bool(infos["won"][0])
             update_text = build_update_text(
                 signal=args.signal,
                 obs=obs,

@@ -29,3 +29,11 @@
   unusable 61.5% apparent ReAct score.
 - Started the first formal 134-episode interleaved ReAct checkpoint run; all
   follow-up methods must use the same order and seed.
+
+## 2026-07-12 (think-fix relaunch)
+
+- Fixed ReAct/`aTTT` runners so `think:` does not call `env.step`; prompt still
+  records `OK.` and the agent turn still consumes one step budget.
+- Changed `run_attt_alfworld.py` default `--signal` to `env` for the 4B table.
+- Superseded pre-fix interleaved 134 ReAct / Env no-filter logs; relaunched the
+  matched paper matrix under `/root/autodl-tmp/logs/table1_thinkfix`.

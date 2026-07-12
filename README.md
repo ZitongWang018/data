@@ -47,3 +47,7 @@ the selected gamefile, and atomically checkpoint after every episode. By
 default, they interleave the six ALFWorld task families with a fixed within-
 family seed, preventing a resumable prefix from being dominated by one task
 family. Use `--game-order sorted` only when reproducing a legacy diagnostic.
+## Interaction note
+
+ actions are prompt-only: they append  to the trajectory and do
+not call . Agent-turn budget still increments.

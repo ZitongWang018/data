@@ -116,10 +116,14 @@ def main() -> None:
             elif not is_thought and gen.action not in admissible:
                 invalid_actions += 1
             print(f"episode={episode_id} step={steps} action={gen.action}", flush=True)
-            next_obs_batch, _scores, dones, infos = env.step([gen.action])
-            next_obs = "OK." if is_thought else next_obs_batch[0]
-            done = bool(dones[0])
-            won = bool(infos["won"][0])
+            # ReAct thoughts stay in the prompt only; do not consume an environment transition.
+            if is_thought:
+                next_obs = "OK."
+            else:
+                next_obs_batch, _scores, dones, infos = env.step([gen.action])
+                next_obs = next_obs_batch[0]
+                done = bool(dones[0])
+                won = bool(infos["won"][0])
             trajectory.append({"obs": obs, "raw": gen.text, "action": gen.action, "won": won})
             history.append((obs, gen.action))
             obs = next_obs
