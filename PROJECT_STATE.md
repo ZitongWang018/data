@@ -32,7 +32,10 @@ observed deltas with the paper's Table 1.
 
 ## In progress
 
-- Deterministic larger-sample ReAct, Env no-filter, and Env aTTT evaluation.
+- A 134-episode ReAct run using the fixed interleaved order is running at
+  `/root/autodl-tmp/logs/react_table1_interleaved_134.json` (seed 0).
+- Matched Env no-filter, Env aTTT, and progress-buffered Env aTTT runs will
+  use that exact game order after the baseline checkpoint completes.
 - Motivation-driven extension and matched-slice comparison.
 - Final table and discrepancy analysis.
 
@@ -43,3 +46,6 @@ observed deltas with the paper's Table 1.
   admissible-action prompt and nondeterministic file ordering, so it is retained
   only as evidence that the old harness inflated performance, not as a paper
   reproduction result.
+- The 13-episode `react_fewshot_fixed_look13` result reached 8/13, but it is
+  invalid for table comparison because lexical file ordering concentrated its
+  prefix in the easy `look_at_obj_in_light` task family.

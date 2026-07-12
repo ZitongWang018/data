@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 
+from agentic_ttt.alfworld_env import order_game_files
 from agentic_ttt.llm_policy import (
     build_paper_react_prompt,
     build_zero_shot_react_prompt,
@@ -13,6 +15,16 @@ from scripts.run_attt_alfworld import is_progress_transition
 
 
 class CoreLogicTests(unittest.TestCase):
+    def test_interleaved_order_avoids_task_family_prefix(self) -> None:
+        files = [
+            f"/tmp/{family}-item-{index}/trial/game.tw-pddl"
+            for family in ("look_at_obj_in_light", "pick_and_place")
+            for index in range(3)
+        ]
+        ordered = order_game_files(files, order="interleaved", seed=0)
+        families = [Path(item).parents[1].name.split("-item-")[0] for item in ordered]
+        self.assertEqual(families[:4], ["look_at_obj_in_light", "pick_and_place"] * 2)
+
     def test_paper_prompt_has_two_examples_without_action_leak(self) -> None:
         prompts = {"react_put_0": "example zero\n", "react_put_1": "example one\n"}
         prompt = build_paper_react_prompt(

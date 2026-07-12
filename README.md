@@ -43,4 +43,7 @@ python scripts/run_attt_alfworld.py \
 ```
 
 Both runners sort the complete `valid_unseen` game list before slicing, record
-the selected gamefile, and atomically checkpoint after every episode.
+the selected gamefile, and atomically checkpoint after every episode. By
+default, they interleave the six ALFWorld task families with a fixed within-
+family seed, preventing a resumable prefix from being dominated by one task
+family. Use `--game-order sorted` only when reproducing a legacy diagnostic.

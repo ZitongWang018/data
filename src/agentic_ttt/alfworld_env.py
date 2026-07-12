@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
+import random
 from typing import Any
 
 
@@ -75,10 +76,44 @@ def make_alfworld_env(config: dict[str, Any], *, batch_size: int = 1, start_inde
     return env.init_env(batch_size=batch_size)
 
 
+def order_game_files(game_files: list[str], *, order: str = "sorted", seed: int = 0) -> list[str]:
+    """Return a reproducible evaluation order without clustering task families."""
+    files = sorted(game_files)
+    if order == "sorted":
+        return files
+    if order != "interleaved":
+        raise ValueError(f"Unknown game order: {order}")
+
+    families = (
+        "look_at_obj_in_light",
+        "pick_and_place",
+        "pick_clean_then_place",
+        "pick_cool_then_place",
+        "pick_heat_then_place",
+        "pick_two_obj",
+    )
+    buckets: dict[str, list[str]] = {family: [] for family in families}
+    for game_file in files:
+        name = Path(game_file).parents[1].name
+        family = next((item for item in families if name.startswith(item)), "other")
+        buckets.setdefault(family, []).append(game_file)
+    rng = random.Random(seed)
+    for bucket in buckets.values():
+        rng.shuffle(bucket)
+
+    ordered: list[str] = []
+    while any(buckets.values()):
+        for family in (*families, "other"):
+            bucket = buckets.get(family, [])
+            if bucket:
+                ordered.append(bucket.pop())
+    return ordered
+
+
 class AlfworldEpisodeFactory:
     """Create single-game environments with a stable global game index."""
 
-    def __init__(self, config: dict[str, Any]) -> None:
+    def __init__(self, config: dict[str, Any], *, game_order: str = "sorted", order_seed: int = 0) -> None:
         from alfworld.agents.environment import get_environment
 
         runtime_config = deepcopy(config)
@@ -88,7 +123,7 @@ class AlfworldEpisodeFactory:
             runtime_config,
             train_eval=runtime_config.get("split", "eval_out_of_distribution"),
         )
-        self.game_files = sorted(self._template.game_files)
+        self.game_files = order_game_files(self._template.game_files, order=game_order, seed=order_seed)
 
     def make_env(self, game_index: int, *, batch_size: int = 1):
         if game_index < 0 or game_index >= len(self.game_files):

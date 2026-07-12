@@ -23,3 +23,9 @@
 - Corrected update text to use Env observations and Self model text verbatim.
 - Added progress-buffered Env aTTT, which selects the latest valid state-changing
   observation in each cadence window and skips windows containing only no-ops.
+- Replaced lexical-prefix evaluation with a deterministic interleaved task-family
+  order (fixed seed within each family) after discovering that a 13-episode
+  sorted prefix was almost entirely `look_at_obj_in_light` and produced an
+  unusable 61.5% apparent ReAct score.
+- Started the first formal 134-episode interleaved ReAct checkpoint run; all
+  follow-up methods must use the same order and seed.

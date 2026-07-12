@@ -18,6 +18,8 @@ def main() -> None:
     parser.add_argument("--episodes", type=int, default=1)
     parser.add_argument("--start-index", type=int, default=0)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--game-order", choices=["sorted", "interleaved"], default="interleaved")
+    parser.add_argument("--order-seed", type=int, default=0)
     parser.add_argument("--max-steps", type=int, default=50)
     parser.add_argument("--max-new-tokens", type=int, default=96)
     parser.add_argument(
@@ -52,6 +54,8 @@ def main() -> None:
             "method": method,
             "start_index": args.start_index,
             "seed": args.seed,
+            "game_order": args.game_order,
+            "order_seed": args.order_seed,
             "prompt_mode": args.prompt_mode,
             "chat_template": args.chat_template,
         },
@@ -64,7 +68,7 @@ def main() -> None:
         return
 
     config = build_alfworld_config(num_eval_games=0, max_steps=args.max_steps)
-    env_factory = AlfworldEpisodeFactory(config)
+    env_factory = AlfworldEpisodeFactory(config, game_order=args.game_order, order_seed=args.order_seed)
     if args.start_index + args.episodes > len(env_factory.game_files):
         raise ValueError(
             f"Requested games through {args.start_index + args.episodes}, "
@@ -147,6 +151,8 @@ def write_summary(*, output: Path, method: str, args: argparse.Namespace, result
         "prompt_mode": args.prompt_mode,
         "chat_template": args.chat_template,
         "seed": args.seed,
+        "game_order": args.game_order,
+        "order_seed": args.order_seed,
         "model_path": args.model_path,
         "max_steps": args.max_steps,
         "max_new_tokens": args.max_new_tokens,
