@@ -8,7 +8,7 @@ import numpy as np
 import torch
 
 from agentic_ttt.alfworld_env import AlfworldEpisodeFactory, build_alfworld_config
-from agentic_ttt.llm_policy import LocalCausalPolicy
+from agentic_ttt.llm_policy import LocalCausalPolicy, VllmCausalPolicy
 from agentic_ttt.results import atomic_write_json, load_completed_results, runtime_metadata
 
 
@@ -21,12 +21,15 @@ def main() -> None:
     parser.add_argument("--game-order", choices=["sorted", "interleaved"], default="interleaved")
     parser.add_argument("--order-seed", type=int, default=0)
     parser.add_argument("--max-steps", type=int, default=50)
-    parser.add_argument("--max-new-tokens", type=int, default=96)
+    parser.add_argument("--max-new-tokens", type=int, default=2048)
     parser.add_argument(
         "--prompt-mode",
-        choices=["react_fewshot", "react_zero_shot", "admissible"],
-        default="react_fewshot",
+        choices=["react_fewshot", "react_zero_shot", "admissible", "author_admissible"],
+        default="author_admissible",
     )
+    parser.add_argument("--backend", choices=["hf", "vllm"], default="hf")
+    parser.add_argument("--device-map", choices=["cuda", "auto"], default="cuda")
+    parser.add_argument("--repeat-action-stop", type=int, default=3)
     parser.add_argument("--loop-suppress", action="store_true")
     parser.add_argument("--ngram-gate", action="store_true")
     parser.add_argument("--chat-template", action="store_true")
@@ -58,6 +61,9 @@ def main() -> None:
             "order_seed": args.order_seed,
             "prompt_mode": args.prompt_mode,
             "chat_template": args.chat_template,
+            "backend": args.backend,
+            "device_map": args.device_map,
+            "repeat_action_stop": args.repeat_action_stop,
         },
     )
     if len(results) > args.episodes:
@@ -74,11 +80,13 @@ def main() -> None:
             f"Requested games through {args.start_index + args.episodes}, "
             f"but ALFWorld only has {len(env_factory.game_files)}"
         )
-    policy = LocalCausalPolicy(
+    policy_cls = VllmCausalPolicy if args.backend == "vllm" else LocalCausalPolicy
+    policy = policy_cls(
         args.model_path,
         max_new_tokens=args.max_new_tokens,
         prompt_mode=args.prompt_mode,
         use_chat_template=args.chat_template,
+        device_map=args.device_map,
     )
 
     for episode_id in range(len(results), args.episodes):
@@ -111,11 +119,29 @@ def main() -> None:
                 gamefile=gamefile,
             )
             is_thought = gen.action.lower().startswith("think:")
-            if args.prompt_mode == "admissible" and gen.action not in admissible:
+            if args.prompt_mode in {"admissible", "author_admissible"} and gen.action not in admissible:
                 gen.action = "look" if "look" in admissible else admissible[0]
             elif not is_thought and gen.action not in admissible:
                 invalid_actions += 1
             print(f"episode={episode_id} step={steps} action={gen.action}", flush=True)
+            if reached_repeated_action_stop(history, gen.action, threshold=args.repeat_action_stop):
+                trajectory.append(
+                    {
+                        "obs": obs,
+                        "raw": gen.text,
+                        "action": gen.action,
+                        "won": won,
+                        "early_stop": "repeat_action",
+                    }
+                )
+                history.append((obs, gen.action))
+                steps += 1
+                print(
+                    f"episode={episode_id} early_stop=repeat_action action={gen.action} "
+                    f"count={args.repeat_action_stop}",
+                    flush=True,
+                )
+                break
             # ReAct thoughts stay in the prompt only; do not consume an environment transition.
             if is_thought:
                 next_obs = "OK."
@@ -154,12 +180,15 @@ def write_summary(*, output: Path, method: str, args: argparse.Namespace, result
         "method": method,
         "prompt_mode": args.prompt_mode,
         "chat_template": args.chat_template,
+        "backend": args.backend,
+        "device_map": args.device_map,
         "seed": args.seed,
         "game_order": args.game_order,
         "order_seed": args.order_seed,
         "model_path": args.model_path,
         "max_steps": args.max_steps,
         "max_new_tokens": args.max_new_tokens,
+        "repeat_action_stop": args.repeat_action_stop,
         "runtime": runtime_metadata(),
         "episodes": args.episodes,
         "completed_episodes": len(results),
@@ -190,6 +219,18 @@ def suppress_loop_actions(
     banned = {action for action in set(recent) if recent.count(action) >= threshold}
     filtered = [action for action in admissible if action not in banned]
     return filtered if filtered else admissible
+
+
+def reached_repeated_action_stop(
+    history: list[tuple[str, str]],
+    action: str,
+    *,
+    threshold: int,
+) -> bool:
+    if threshold <= 0:
+        return False
+    recent = [past_action for _obs, past_action in history]
+    return (recent + [action])[-threshold:] == [action] * threshold
 
 
 def suppress_repeated_action_ngrams(

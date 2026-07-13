@@ -37,3 +37,19 @@
 - Changed `run_attt_alfworld.py` default `--signal` to `env` for the 4B table.
 - Superseded pre-fix interleaved 134 ReAct / Env no-filter logs; relaunched the
   matched paper matrix under `/root/autodl-tmp/logs/table1_thinkfix`.
+
+## 2026-07-13 (author-feedback alignment)
+
+- Author feedback says the first-version setting is not standard few-shot
+  ReAct: the model sees the environment observation plus the current legal
+  action list, uses a zero-shot `Thought:` / `Action:` prompt, temperature 0,
+  `max_tokens=2048`, at most 50 steps, and early-stops after three identical
+  repeated actions.
+- Added `--prompt-mode author_admissible` as the default and kept
+  `react_fewshot` only as a separate diagnostic mode.
+- Added `--repeat-action-stop 3`; baseline can optionally use `--backend vllm`
+  when vLLM is installed, while online TTT keeps HF/PEFT because LoRA updates
+  require a trainable model.
+- HF/PEFT now defaults to `--device-map cuda`; `device_map=auto` can offload
+  Qwen3.5 linear-attention/causal-conv layers to CPU under memory pressure and
+  crash with `Expected x.is_cuda() to be true`.

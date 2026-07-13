@@ -11,10 +11,19 @@ Test-Time Training for LLM Agents* on ALFWorld.
 - Agentic TTT with tokenizer-level 3-gram exposure weights.
 - Progress-buffered Env aTTT plus optional adaptive and loop-control extensions.
 
-The default `react_fewshot` prompt uses the original task-specific two-shot
-ALFWorld demonstrations from the MIT-licensed ReAct repository. It does not
-show the model `admissible_commands`. The old action-list prompt remains
-available as `--prompt-mode admissible` for diagnostics only.
+The current default follows the author-feedback first-version setting:
+`--prompt-mode author_admissible`, no demonstrations, live environment
+observation plus the current `admissible_commands` list, deterministic
+decoding (`temperature=0` / greedy), `--max-new-tokens 2048`,
+`--max-steps 50`, `--repeat-action-stop 3`, and `--device-map cuda` for the
+HF/PEFT fallback path. The model is asked to emit `Thought:` and `Action:`,
+but because there are no demonstrations this should be described as a zero-shot
+thought/action prompt rather than standard few-shot ReAct.
+
+The original task-specific two-shot ReAct prompts remain available as
+`--prompt-mode react_fewshot` for paper-style diagnostics. Baseline inference
+can use `--backend vllm` when vLLM is installed; online TTT keeps the HF/PEFT
+path because LoRA updates require a trainable model.
 
 ## Remote layout
 
@@ -34,12 +43,17 @@ export PYTHONPATH=src
 export TRANSFORMERS_OFFLINE=1
 
 python scripts/run_react_alfworld.py \
-  --episodes 134 --max-steps 50 --resume \
-  --output /root/autodl-tmp/logs/react_paper_134.json
+  --episodes 134 --max-steps 50 --max-new-tokens 2048 \
+  --prompt-mode author_admissible --repeat-action-stop 3 --resume \
+  --device-map cuda \
+  --output /root/autodl-tmp/logs/react_author_admissible_134.json
 
 python scripts/run_attt_alfworld.py \
-  --episodes 134 --max-steps 50 --cadence 5 --signal env --resume \
-  --output /root/autodl-tmp/logs/env_attt_paper_134.json
+  --episodes 134 --max-steps 50 --max-new-tokens 2048 \
+  --prompt-mode author_admissible --repeat-action-stop 3 \
+  --device-map cuda \
+  --cadence 5 --signal env --resume \
+  --output /root/autodl-tmp/logs/env_attt_author_admissible_134.json
 ```
 
 Both runners sort the complete `valid_unseen` game list before slicing, record
@@ -52,4 +66,3 @@ family. Use `--game-order sorted` only when reproducing a legacy diagnostic.
 
 think: actions are prompt-only: they append OK. to the trajectory and do
 not call env.step. Agent-turn budget still increments.
-

@@ -15,6 +15,7 @@ from .llm_policy import (
     newline_stopping_criteria,
     parse_action,
     parse_react_line,
+    resolve_device_map,
 )
 from .repetition import compute_sequence_weights
 
@@ -38,11 +39,12 @@ class TrainableCausalPolicy:
         self,
         model_path: str,
         *,
-        max_new_tokens: int = 96,
+        max_new_tokens: int = 2048,
         history_window: int = 3,
         train_config: ATrainConfig | None = None,
         prompt_mode: str = "react_fewshot",
         use_chat_template: bool = False,
+        device_map: str = "cuda",
     ) -> None:
         self.model_path = model_path
         self.max_new_tokens = max_new_tokens
@@ -50,6 +52,7 @@ class TrainableCausalPolicy:
         self.train_config = train_config or ATrainConfig()
         self.prompt_mode = prompt_mode
         self.use_chat_template = use_chat_template
+        self.device_map = resolve_device_map(device_map)
         self.tokenizer = AutoTokenizer.from_pretrained(
             model_path,
             trust_remote_code=True,
@@ -58,7 +61,7 @@ class TrainableCausalPolicy:
         base_model = AutoModelForCausalLM.from_pretrained(
             model_path,
             torch_dtype=torch.bfloat16,
-            device_map="auto",
+            device_map=self.device_map,
             trust_remote_code=True,
             local_files_only=True,
         )
@@ -124,14 +127,19 @@ class TrainableCausalPolicy:
                 enable_thinking=False,
             )
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
-        stopping = newline_stopping_criteria(self.tokenizer, inputs["input_ids"].shape[1])
+        stopping = None if self.prompt_mode == "author_admissible" else newline_stopping_criteria(
+            self.tokenizer, inputs["input_ids"].shape[1]
+        )
+        generate_kwargs = {}
+        if stopping is not None:
+            generate_kwargs["stopping_criteria"] = stopping
         with torch.no_grad():
             output = self.model.generate(
                 **inputs,
                 max_new_tokens=self.max_new_tokens,
                 do_sample=False,
                 pad_token_id=self.tokenizer.eos_token_id,
-                stopping_criteria=stopping,
+                **generate_kwargs,
             )
         generated = self.tokenizer.decode(output[0][inputs["input_ids"].shape[1] :], skip_special_tokens=True)
         if self.prompt_mode in {"react_fewshot", "react_zero_shot"}:

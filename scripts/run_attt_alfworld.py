@@ -22,12 +22,14 @@ def main() -> None:
     parser.add_argument("--game-order", choices=["sorted", "interleaved"], default="interleaved")
     parser.add_argument("--order-seed", type=int, default=0)
     parser.add_argument("--max-steps", type=int, default=50)
-    parser.add_argument("--max-new-tokens", type=int, default=96)
+    parser.add_argument("--max-new-tokens", type=int, default=2048)
     parser.add_argument(
         "--prompt-mode",
-        choices=["react_fewshot", "react_zero_shot", "admissible"],
-        default="react_fewshot",
+        choices=["react_fewshot", "react_zero_shot", "admissible", "author_admissible"],
+        default="author_admissible",
     )
+    parser.add_argument("--repeat-action-stop", type=int, default=3)
+    parser.add_argument("--device-map", choices=["cuda", "auto"], default="cuda")
     parser.add_argument("--cadence", type=int, default=5)
     parser.add_argument("--signal", choices=["self", "env"], default="env")
     parser.add_argument("--adaptive", action="store_true")
@@ -70,6 +72,8 @@ def main() -> None:
             "order_seed": args.order_seed,
             "prompt_mode": args.prompt_mode,
             "chat_template": args.chat_template,
+            "device_map": args.device_map,
+            "repeat_action_stop": args.repeat_action_stop,
         },
     )
     if len(results) > args.episodes:
@@ -96,6 +100,7 @@ def main() -> None:
         max_new_tokens=args.max_new_tokens,
         prompt_mode=args.prompt_mode,
         use_chat_template=args.chat_template,
+        device_map=args.device_map,
     )
 
     for episode_id in range(len(results), args.episodes):
@@ -130,10 +135,28 @@ def main() -> None:
                 gamefile=gamefile,
             )
             is_thought = gen.action.lower().startswith("think:")
-            if args.prompt_mode == "admissible" and gen.action not in admissible:
+            if args.prompt_mode in {"admissible", "author_admissible"} and gen.action not in admissible:
                 gen.action = "look" if "look" in admissible else admissible[0]
             elif not is_thought and gen.action not in admissible:
                 invalid_actions += 1
+            if reached_repeated_action_stop(history, gen.action, threshold=args.repeat_action_stop):
+                trajectory.append(
+                    {
+                        "obs": obs,
+                        "raw": gen.text,
+                        "action": gen.action,
+                        "won": won,
+                        "early_stop": "repeat_action",
+                    }
+                )
+                history.append((obs, gen.action))
+                steps += 1
+                print(
+                    f"episode={episode_id} early_stop=repeat_action action={gen.action} "
+                    f"count={args.repeat_action_stop}",
+                    flush=True,
+                )
+                break
             # ReAct thoughts stay in the prompt only; do not consume an environment transition.
             if is_thought:
                 next_obs = "OK."
@@ -304,12 +327,14 @@ def write_summary(*, output: Path, method: str, args: argparse.Namespace, result
         "progress_buffered_env": args.progress_buffered_env,
         "prompt_mode": args.prompt_mode,
         "chat_template": args.chat_template,
+        "device_map": args.device_map,
         "seed": args.seed,
         "game_order": args.game_order,
         "order_seed": args.order_seed,
         "model_path": args.model_path,
         "max_steps": args.max_steps,
         "max_new_tokens": args.max_new_tokens,
+        "repeat_action_stop": args.repeat_action_stop,
         "cadence": args.cadence,
         "runtime": runtime_metadata(),
         "episodes": args.episodes,
@@ -344,6 +369,18 @@ def build_update_text(
     if update_action_only:
         return action.strip()
     return model_text.strip() or action.strip()
+
+
+def reached_repeated_action_stop(
+    history: list[tuple[str, str]],
+    action: str,
+    *,
+    threshold: int,
+) -> bool:
+    if threshold <= 0:
+        return False
+    recent = [past_action for _obs, past_action in history]
+    return (recent + [action])[-threshold:] == [action] * threshold
 
 
 def suppress_repeated_action_ngrams(

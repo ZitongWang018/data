@@ -5,13 +5,15 @@ from pathlib import Path
 
 from agentic_ttt.alfworld_env import order_game_files
 from agentic_ttt.llm_policy import (
+    build_author_admissible_prompt,
     build_paper_react_prompt,
     build_zero_shot_react_prompt,
+    parse_action,
     parse_react_line,
     task_prompt_prefix,
 )
 from agentic_ttt.repetition import compute_sequence_weights
-from scripts.run_attt_alfworld import is_progress_transition
+from scripts.run_attt_alfworld import is_progress_transition, reached_repeated_action_stop
 
 
 class CoreLogicTests(unittest.TestCase):
@@ -53,9 +55,31 @@ class CoreLogicTests(unittest.TestCase):
         self.assertNotIn("Here are two examples", prompt)
         self.assertNotIn("Admissible actions", prompt)
 
+    def test_author_prompt_matches_admissible_action_protocol(self) -> None:
+        prompt = build_author_admissible_prompt(
+            task="Your task is to: put apple on table.",
+            observation="You are in a room.",
+            history=[],
+            admissible_actions=["go to table 1", "look"],
+        )
+        self.assertIn("Thought: <your reasoning>", prompt)
+        self.assertIn("Action: <one action copied EXACTLY", prompt)
+        self.assertIn("Observation: You are in a room.", prompt)
+        self.assertIn("Admissible actions: ['go to table 1', 'look']", prompt)
+        self.assertTrue(prompt.endswith("Thought:"))
+
+    def test_author_action_parser_reads_two_line_output(self) -> None:
+        text = "Thought: I should inspect the table.\nAction: go to table 1"
+        self.assertEqual(parse_action(text, ["go to table 1", "look"]), "go to table 1")
+
     def test_react_line_does_not_snap_to_admissible_action(self) -> None:
         self.assertEqual(parse_react_line("Action: open drawer  to open drawer 3\n"), "open drawer  to open drawer 3")
         self.assertEqual(parse_react_line("> think: inspect the desk\n"), "think: inspect the desk")
+
+    def test_repeat_action_stop_after_three_identical_actions(self) -> None:
+        history = [("obs0", "look"), ("obs1", "look")]
+        self.assertTrue(reached_repeated_action_stop(history, "look", threshold=3))
+        self.assertFalse(reached_repeated_action_stop(history, "inventory", threshold=3))
 
     def test_token_exposure_matches_paper_formula(self) -> None:
         weighting = compute_sequence_weights([1, 2, 3, 4], [1, 2, 3, 1, 2, 3], ngram_size=3)
